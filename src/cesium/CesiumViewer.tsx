@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
@@ -6,9 +6,23 @@ Cesium.Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_ION_TOKEN
 
 const HOME = { lon: 34.964138, lat: 32.763391 }
 
-export default function CesiumViewer() {
+export interface CesiumViewerHandle {
+  flyTo: (lon: number, lat: number) => void
+}
+
+const CesiumViewer = forwardRef<CesiumViewerHandle>((_, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<Cesium.Viewer | null>(null)
+
+  useImperativeHandle(ref, () => ({
+    flyTo(lon, lat) {
+      viewerRef.current?.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(lon, lat, 600),
+        orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 },
+        duration: 2,
+      })
+    },
+  }))
 
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) return
@@ -19,6 +33,8 @@ export default function CesiumViewer() {
       selectionIndicator: false,
       baseLayerPicker: false,
       sceneModePicker: false,
+      animation: false,
+      timeline: false,
     })
     viewerRef.current = viewer
 
@@ -30,11 +46,7 @@ export default function CesiumViewer() {
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(HOME.lon, HOME.lat, 600),
-      orientation: {
-        heading: Cesium.Math.toRadians(0),
-        pitch: Cesium.Math.toRadians(-45),
-        roll: 0,
-      },
+      orientation: { heading: 0, pitch: Cesium.Math.toRadians(-45), roll: 0 },
       duration: 3,
     })
 
@@ -45,4 +57,6 @@ export default function CesiumViewer() {
   }, [])
 
   return <div ref={containerRef} className="w-full h-full" />
-}
+})
+
+export default CesiumViewer
