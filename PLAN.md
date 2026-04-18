@@ -1,6 +1,8 @@
 # Wind Simulation — Project Plan
 
-> **How to use:** After each phase, mark it ✅ and fill in the "Result" field. Paste the Claude prompt template into a fresh Claude session with the current code state.
+> **Product vision:** A 3D wind simulation tool for evaluating placement of **vertical-axis wind turbines (VAWTs)** in urban environments. VAWTs are compact, omnidirectional, and mountable on rooftops, balcony corners, and building edges — they thrive in the turbulent, swirling wind conditions created by urban geometry. This tool lets users explore real neighborhoods, visualize airflow around buildings, and identify optimal micro-siting spots for small VAWTs.
+
+> **How to use:** After each phase, mark it ✅ and fill in the "Result" field.
 
 ---
 
@@ -8,14 +10,14 @@
 
 | Phase | Name | Status | Notes |
 |-------|------|--------|-------|
-| 0 | Project Setup | 🔄 In progress | Vite+React+TS scaffold exists, no Cesium yet |
-| 1 | 3D Neighborhood Viewer | ⬜ | |
-| 2 | UI Control Panel | ⬜ | |
-| 3 | Wind & Air Flow Visualization | ⬜ | |
-| 4 | Object Placement System | ⬜ | |
-| 5 | Simple Wind Interaction | ⬜ | |
+| 0 | Project Setup | ✅ | Cesium 1.140 + Tailwind v4 + vite-plugin-cesium |
+| 1 | 3D Neighborhood Viewer | ✅ | OSM buildings, World Terrain, Bing imagery, fly-in to Haifa (32.763391, 34.964138) |
+| 2 | UI Control Panel | ✅ | Wind speed/direction sliders, compass rose, gust toggle, Nominatim search |
+| 3 | Wind & Air Flow Visualization | 🔄 | 25k particle system with building deflection via height grid |
+| 4 | VAWT Placement System | ⬜ | |
+| 5 | VAWT Wind Response | ⬜ | |
 | 6 | Physics Integration (cannon-es) | ⬜ | |
-| 7 | Smart Object Behaviors | ⬜ | |
+| 7 | Smart VAWT Behaviors | ⬜ | |
 | 8 | Extensibility for Other Users | ⬜ | |
 | 9 | Polish, Performance & Sharing | ⬜ | |
 
@@ -124,39 +126,45 @@ or "Phase X successful — proceed to Phase Y".
 
 ---
 
-## Phase 4: Object Placement System
+## Phase 4: VAWT Placement System
 
-**Goal:** Click-to-place GLTF/GLB models on the map.
+**Goal:** Click-to-place vertical-axis wind turbine (VAWT) models on any surface.
+
+**Context:** VAWTs are small, cylindrical turbines that spin around a vertical axis. They work with wind from any direction and are designed for urban micro-siting: rooftops, balcony railings, building corners, and parapet edges. They do NOT need to face the wind.
 
 **Requirements:**
-- Click on terrain/building → opens placement menu
-- Load a simple `wind-turbine.glb` (low-poly, free from Sketchfab or KHR samples)
-- Placed entity snaps to ground/roof surface
-- List of placed objects in sidebar (with remove button)
-- Objects persist through camera moves (Cesium Entity or Primitive)
+- Click on terrain, rooftop, or building facade → places a VAWT model at that point
+- Placement snaps to the clicked surface normal (roof = vertical mount, wall = horizontal arm mount)
+- VAWT model: low-poly Savonius or Darrieus rotor GLB in `public/models/vawt.glb`
+- Support two placement modes: **Rooftop** (vertical pole) and **Balcony corner** (corner bracket mount)
+- List of placed VAWTs in sidebar with label, location, and remove button
+- VAWTs persist through camera moves
 
 **Libraries:** `cesium`, GLTF file via `public/models/`
 
-**Test:** Click rooftop → turbine appears at correct geographic position; camera orbit doesn't move it.
+**Test:** Click a rooftop → VAWT appears upright at that position. Click a building corner → VAWT appears mounted at corner height.
 
 **Result:** ⬜ _fill after testing_
 
 ---
 
-## Phase 5: Simple Wind Interaction (no physics)
+## Phase 5: VAWT Wind Response (no physics)
 
-**Goal:** Each placed object samples local wind vector → visual reaction.
+**Goal:** Each placed VAWT visually reacts to local wind; sidebar shows estimated power output.
+
+**Context:** VAWTs respond to wind from any horizontal direction — the rotor spins around its vertical axis regardless of where the wind comes from. Power output scales roughly with the cube of wind speed: P ∝ v³. Urban placement near building corners and edges often benefits from wind acceleration (Venturi effect).
 
 **Requirements:**
-- Each object polls current wind speed + direction from Phase 2 state
-- Turbine blades rotate; rotation speed ∝ wind speed
-- Simple drag: object tilts slightly into wind direction
-- Sampled every animation frame (Cesium `viewer.clock.onTick`)
-- No real physics engine yet — pure transform manipulation
+- Each VAWT rotor spins continuously; rotation speed ∝ local wind speed
+- Local wind speed at each VAWT samples from the particle flow field (position in height grid)
+- Building corner / rooftop edge VAWTs get a +10–30% Venturi boost multiplier
+- Sidebar shows per-VAWT estimated power output in Watts (simplified P = 0.5 × Cp × ρ × A × v³, Cp=0.35)
+- VAWTs in wind shadow (downwind of buildings) show reduced speed and power
+- No physics engine yet — pure transform rotation
 
 **Libraries:** `cesium`
 
-**Test:** Turbine blades spin; increasing wind speed spins them faster.
+**Test:** VAWT spins; increasing wind speed spins it faster and raises power readout. A VAWT behind a building shows lower output than one on an exposed corner.
 
 **Result:** ⬜ _fill after testing_
 
@@ -182,22 +190,22 @@ or "Phase X successful — proceed to Phase Y".
 
 ---
 
-## Phase 7: Smart Object Behaviors
+## Phase 7: Smart VAWT Behaviors
 
-**Goal:** Per-model behavior system with metadata JSON.
+**Goal:** Per-VAWT behavior system with metadata + site quality scoring.
 
 **Requirements:**
-- `src/behaviors/` folder — one `.ts` file per behavior type
-- `BehaviorMeta` interface: `{ dragCoefficient, mass, updateFn }`
-- Bundled behaviors: `horizontal-turbine`, `vehicle`, `aircraft`
-- Turbine: blade rotation + live power output (W) shown in sidebar
-- Vehicle: steering controls + wind pushes it laterally
-- JSON metadata sidecar per GLTF model (`wind-turbine.meta.json`)
-- UI shows power output, drag force, current wind speed at object location
+- `src/behaviors/` folder — one `.ts` file per VAWT type
+- `VAWTMeta` interface: `{ rotorDiameter, rotorHeight, Cp, mass, mountType }`
+- Bundled types: `savonius-small` (balcony, ~0.5m dia), `darrieus-rooftop` (1–2m dia), `helical-corner` (corner mount)
+- Each type has correct rotor geometry and power curve
+- Site quality score (0–100) shown per VAWT: factors in avg wind speed, turbulence index, Venturi boost, shadow penalty
+- JSON metadata sidecar per GLB (`vawt-savonius.meta.json`)
+- Sidebar shows: power (W), site score, wind speed at rotor, turbulence level
 
 **Libraries:** `cesium`, `cannon-es`
 
-**Test:** Drop turbine → see live kW readout update with wind slider.
+**Test:** Place two VAWTs — one on exposed corner, one in wind shadow. Corner VAWT scores higher and shows higher power output.
 
 **Result:** ⬜ _fill after testing_
 
@@ -244,8 +252,10 @@ or "Phase X successful — proceed to Phase Y".
 
 ## Notes & Decisions
 
-_Add any architectural decisions, gotchas, or deferred ideas here as the project progresses._
-
-- **Neighborhood:** TBD — set lat/lon in Phase 1
-- **Ion token:** Get free token at [cesium.com/ion](https://cesium.com/ion) before Phase 0
-- **Turbine model:** Download before Phase 4 (search "wind turbine" on Sketchfab, filter CC0)
+- **Turbine type:** Vertical-axis wind turbines (VAWTs) only — Savonius and Darrieus designs. VAWTs are omnidirectional (no yaw needed), low-noise, and suited for turbulent urban wind. They are small enough for balcony corners and rooftop parapets.
+- **Neighborhood:** Haifa, Israel — lat 32.763391, lon 34.964138
+- **Ion token:** stored in `.env` as `VITE_CESIUM_ION_TOKEN`
+- **Wind simulation approach:** Particle advection (Phase 3) with height-grid building deflection. A Lattice-Boltzmann 2D slice is the right long-term approach for realistic wake/vortex modeling around buildings — consider for Phase 7 site scoring.
+- **Cesium version:** 1.140 — use `baseLayer` not deprecated `imageryProvider`; `sceneModePicker: false` required (OSM buildings crash in 2D mode)
+- **Tailwind v4 gotcha:** bare `* { padding: 0 }` outside any layer overrides utility classes — do not add global resets after `@import "tailwindcss"`
+- **VAWT model:** Need GLB before Phase 4. Options: create simple procedural mesh in code, or source CC0 Savonius model.
